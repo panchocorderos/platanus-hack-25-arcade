@@ -167,6 +167,10 @@ function create() {
   sceneRef = this;
   g = this.add.graphics();
 
+  // Clear any existing references that might have been destroyed
+  matrixTexts = [];
+  matrixColumns = [];
+
   // Always start with title screen
   // Load high score
   let highScore = 0;
@@ -234,9 +238,17 @@ function showTitleScreen(highScore) {
   });
 
   // Configurar evento de teclado para SPACE
+  // Enable keyboard if needed
+  if (!sceneRef.input.keyboard.enabled) {
+    sceneRef.input.keyboard.enabled = true;
+  }
+  // Remove any existing listeners first by using off
   const spaceKey = sceneRef.input.keyboard.addKey('SPACE');
+  spaceKey.off('down');
   spaceKey.once('down', () => {
-    startGame();
+    if (state === MENU) {
+      startGame();
+    }
   });
 }
 
@@ -404,19 +416,19 @@ function update(time, delta) {
 
   // Enemy spawning (wave system with difficulty scaling)
   const wave = Math.floor(gameTime / 30000);
-  
+
   // Spawn rate decreases over time (enemies spawn faster)
   // Base starts at 2000ms, decreases by 100ms per wave, minimum 300ms
   // Also decreases gradually within each wave based on time
   const waveProgress = (gameTime % 30000) / 30000; // 0 to 1 within current wave
   const baseSpawnRate = Math.max(300, 2000 - wave * 100 - waveProgress * 50);
-  
+
   // Calculate difficulty multiplier based on time (increases every 2 minutes)
   const difficultyMult = 1 + Math.floor(gameTime / 120000) * 0.15 + (gameTime % 120000) / 120000 * 0.15;
-  
+
   // Calculate spawn count multiplier (spawn multiple enemies at once as time progresses)
   const spawnCountMult = 1 + Math.floor(gameTime / 60000); // +1 enemy every minute
-  
+
   spawnT += delta;
   if (spawnT > baseSpawnRate) {
     spawnT = 0;
@@ -426,7 +438,7 @@ function update(time, delta) {
       const spawnCount = Math.min(spawnCountMult, 3); // Max 3 at once
       for (let s = 0; s < spawnCount; s++) {
         if (enemies.length >= maxEnemies) break;
-        
+
         // Spawn based on wave
         const rand = Math.random();
         if (wave < 2 || rand < 0.6) {
@@ -510,7 +522,7 @@ function update(time, delta) {
         }
       }
     }
-    
+
     // Handle chain bounce
     if (proj.owner === 'chain' && proj.bounces !== undefined) {
       // Chain projectile will bounce in collision handler
@@ -536,16 +548,16 @@ function update(time, delta) {
         if (proj.owner === 'chain' && proj.hitEnemies && proj.hitEnemies.includes(j)) {
           continue;
         }
-        
+
         e.hp -= proj.dmg;
         playTone(sceneRef, 100, 0.05);
         createParticles(e.x, e.y, e.color, 4);
-        
+
         // Handle chain bounce
         if (proj.owner === 'chain') {
           if (!proj.hitEnemies) proj.hitEnemies = [];
           proj.hitEnemies.push(j);
-          
+
           if (e.hp <= 0) {
             xpCrys.push({ x: e.x, y: e.y, rad: 5, val: e.xp });
             goldDrops.push({ x: e.x, y: e.y, rad: 4, val: e.gold || Math.floor(e.xp * 2) });
@@ -557,7 +569,7 @@ function update(time, delta) {
             const idx = proj.hitEnemies.indexOf(j);
             if (idx >= 0) proj.hitEnemies.splice(idx, 1);
           }
-          
+
           // Find next closest enemy to bounce to
           let nextTarget = null;
           let minDist = Infinity;
@@ -569,7 +581,7 @@ function update(time, delta) {
               nextTarget = enemies[k];
             }
           }
-          
+
           if (nextTarget && (proj.bounces || 0) < 5) { // Max 5 bounces
             const dx = nextTarget.x - e.x;
             const dy = nextTarget.y - e.y;
@@ -588,7 +600,7 @@ function update(time, delta) {
           }
           continue; // Don't remove chain projectile yet
         }
-        
+
         if (e.hp <= 0) {
           xpCrys.push({ x: e.x, y: e.y, rad: 5, val: e.xp });
           goldDrops.push({ x: e.x, y: e.y, rad: 4, val: e.gold || Math.floor(e.xp * 2) });
@@ -836,7 +848,7 @@ function fireFirewall(w, now) {
       const spd = baseSpd * projSpdMult;
       const count = Math.max(1, Math.floor(projCountMult));
       let angle = Math.atan2(dy, dx);
-      
+
       // Queue projectiles to fire sequentially one after another
       for (let i = 0; i < count; i++) {
         const delay = i * 50; // 50ms delay between each projectile
@@ -976,9 +988,17 @@ function endGame() {
   }).setOrigin(0.5);
 
   // Configurar evento de teclado para SPACE para reiniciar
+  // Enable keyboard if needed
+  if (!sceneRef.input.keyboard.enabled) {
+    sceneRef.input.keyboard.enabled = true;
+  }
+  // Remove any existing listeners first by using off
   const spaceKey = sceneRef.input.keyboard.addKey('SPACE');
+  spaceKey.off('down');
   spaceKey.once('down', () => {
-    sceneRef.scene.restart();
+    if (state === GAMEOVER) {
+      sceneRef.scene.restart();
+    }
   });
 }
 
@@ -988,12 +1008,12 @@ function fireMalware(w, now) {
   const dirs = baseDirs * count; // Multiply directions by projectile count
   const baseSpd = 300;
   const spd = baseSpd * projSpdMult;
-  
+
   // Queue projectiles sequentially for malware spread too
   for (let i = 0; i < dirs; i++) {
     const angle = (i / dirs) * Math.PI * 2;
     const delay = Math.floor(i / baseDirs) * 50; // 50ms delay between each "burst" of 8 projectiles
-    
+
     projQueue.push({
       x: p.x,
       y: p.y,
@@ -1269,7 +1289,7 @@ function getShopItems() {
   const hasDDoS = wpns.some(w => w.type === 'ddos');
   const hasHook = wpns.some(w => w.type === 'hook');
   const hasChain = wpns.some(w => w.type === 'chain');
-  
+
   if (!hasMalware) items.push({ type: 'weapon', name: 'Malware Spread', desc: '8-directional attack', weapon: 'malware', cost: 50 });
   if (!hasDDoS) items.push({ type: 'weapon', name: 'DDoS Attack', desc: 'Area damage aura', weapon: 'ddos', cost: 75 });
   if (!hasHook) items.push({ type: 'weapon', name: 'Phishing Hook', desc: 'Boomerang projectile', weapon: 'hook', cost: 60 });
@@ -1424,7 +1444,7 @@ function getUpgradeOptions() {
   const hasDDoS = wpns.some(w => w.type === 'ddos');
   const hasHook = wpns.some(w => w.type === 'hook');
   const hasChain = wpns.some(w => w.type === 'chain');
-  
+
   if (!hasMalware) all.push({ type: 'weapon', name: 'Malware Spread', desc: '8-directional attack', weapon: 'malware' });
   if (!hasDDoS) all.push({ type: 'weapon', name: 'DDoS Attack', desc: 'Area damage aura', weapon: 'ddos' });
   if (!hasHook) all.push({ type: 'weapon', name: 'Phishing Hook', desc: 'Boomerang projectile', weapon: 'hook' });
@@ -1446,7 +1466,7 @@ function getUpgradeOptions() {
   all.push({ type: 'projspeed', name: '+20% Proj Speed', desc: 'Faster projectiles' });
   all.push({ type: 'aurasize', name: '+25% Aura Size', desc: 'Larger DDoS aura' });
   all.push({ type: 'attackspeed', name: '+15% Attack Speed', desc: 'Fire weapons faster' });
-  
+
   // Shuffle and pick 3
   for (let i = all.length - 1; i > 0; i--) {
     const j = Math.floor(Math.random() * (i + 1));
@@ -1541,18 +1561,25 @@ function initMatrixBackground() {
     }
   }
 
-  if (!matrixTexts || matrixTexts.length === 0) {
-    matrixTexts = [];
-    for (let i = 0; i < maxTexts; i++) {
-      const t = sceneRef.add.text(0, 0, '', {
-        fontSize: '14px',
-        fontFamily: 'monospace',
-        fill: '#007700'
-      });
-      t.setDepth(-1000);
-      t.setVisible(false);
-      matrixTexts.push(t);
+  // Always recreate matrix texts to avoid destroyed object references
+  // Clean up existing texts if they exist (they may have been destroyed by scene restart)
+  if (matrixTexts && matrixTexts.length > 0) {
+    for (let t of matrixTexts) {
+      if (t && t.destroy && t.scene && !t.scene.sys.shutdown) {
+        try { t.destroy(); } catch (e) { }
+      }
     }
+  }
+  matrixTexts = [];
+  for (let i = 0; i < maxTexts; i++) {
+    const t = sceneRef.add.text(0, 0, '', {
+      fontSize: '14px',
+      fontFamily: 'monospace',
+      fill: '#007700'
+    });
+    t.setDepth(-1000);
+    t.setVisible(false);
+    matrixTexts.push(t);
   }
 }
 
@@ -1578,10 +1605,17 @@ function updateMatrixBackground(delta) {
       if (y >= -20 && y < 620) {
         const alpha = Math.max(0, 1 - i * 0.12) * 0.25;
         const txt = matrixTexts[textIdx];
-        txt.setPosition(col.x, y);
-        txt.setText(col.chars[i]);
-        txt.setAlpha(alpha);
-        txt.setVisible(true);
+        // Safety check: skip if text object is destroyed or invalid
+        if (txt && txt.setPosition && txt.setText) {
+          try {
+            txt.setPosition(col.x, y);
+            txt.setText(col.chars[i]);
+            txt.setAlpha(alpha);
+            txt.setVisible(true);
+          } catch (e) {
+            // If object is destroyed, skip it
+          }
+        }
         textIdx++;
       }
     }
