@@ -22,6 +22,7 @@ const game = new Phaser.Game(config);
 // Game state
 let p, enemies = [], projs = [], xpCrys = [], goldDrops = [], wpns = [], state, lvl, xp, hp, maxHp, spd, spawnT, lastFire, keys, g, sceneRef;
 let gameTime, startTime, uiTexts, upgradeCards, xpGain, pickupRange, allDmgMult, particles = [], kills, gold;
+let projCountMult = 1, projSpdMult = 1, auraSizeMult = 1;
 const MENU = 0, PLAYING = 1, LEVELUP = 2, GAMEOVER = 3, SHOP = 4;
 
 function preload() {
@@ -277,11 +278,14 @@ function initGame() {
   xpGain = 1;
   pickupRange = 100;
   allDmgMult = 1;
+  projCountMult = 1;
+  projSpdMult = 1;
+  auraSizeMult = 1;
   kills = 0;
 
   // Keyboard input
-  keys = sceneRef.input.keyboard.addKeys('W,A,S,D,UP,DOWN,LEFT,RIGHT,SHIFT,Z,R');
-
+  keys = sceneRef.input.keyboard.addKeys('W,A,S,D,UP,DOWN,LEFT,RIGHT,SHIFT,Z,R,T');
+  
   // Initialize Firewall weapon
   wpns.push({
     type: 'firewall',
@@ -300,7 +304,7 @@ function initGame() {
   };
 
   // Initial enemy spawn
-  spawnEnemy('bug');
+  spawnEnemy('bug', 1);
 }
 
 function update(time, delta) {
@@ -327,7 +331,17 @@ function update(time, delta) {
       showShop();
     }
   }
-
+  
+  // Check for time cheat keypress (T) - adds 30 seconds
+  if (keys.T && keys.T.isDown) {
+    const now = time;
+    if (!keys.lastTPress || now - keys.lastTPress > 300) {
+      keys.lastTPress = now;
+      gameTime += 30000; // Add 30 seconds
+      playTone(sceneRef, 300, 0.1);
+    }
+  }
+  
   // Check for Z keypress (level up)
   if (keys.Z && keys.Z.isDown) {
     const now = time;
@@ -377,10 +391,14 @@ function update(time, delta) {
       p.sprite.setPosition(p.x, p.y);
     }
   }
-
-  // Enemy spawning (wave system)
+  
+  // Enemy spawning (wave system with difficulty scaling)
   const wave = Math.floor(gameTime / 30000);
   const baseSpawnRate = Math.max(500, 2000 - wave * 100);
+  
+  // Calculate difficulty multiplier based on time (increases every 2 minutes)
+  const difficultyMult = 1 + Math.floor(gameTime / 120000) * 0.15 + (gameTime % 120000) / 120000 * 0.15;
+  
   spawnT += delta;
   if (spawnT > baseSpawnRate) {
     spawnT = 0;
@@ -389,11 +407,11 @@ function update(time, delta) {
       // Spawn based on wave
       const rand = Math.random();
       if (wave < 2 || rand < 0.6) {
-        spawnEnemy('bug');
+        spawnEnemy('bug', difficultyMult);
       } else if (wave < 5 || rand < 0.85) {
-        spawnEnemy('virus');
+        spawnEnemy('virus', difficultyMult);
       } else {
-        spawnEnemy('trojan');
+        spawnEnemy('trojan', difficultyMult);
       }
     }
   }
@@ -425,7 +443,8 @@ function update(time, delta) {
     // Check enemy collision with player
     const pd = Math.sqrt((p.x - e.x) ** 2 + (p.y - e.y) ** 2);
     if (pd < p.rad + e.rad) {
-      const dmg = e.type === 'trojan' ? 25 : (e.type === 'virus' ? 5 : 10);
+      const baseDmg = e.type === 'trojan' ? 25 : (e.type === 'virus' ? 5 : 10);
+      const dmg = Math.floor(baseDmg * (e.difficultyMult || 1));
       hp -= dmg;
       playTone(sceneRef, 150, 0.2);
       sceneRef.cameras.main.shake(200, 0.01);
@@ -570,7 +589,8 @@ function update(time, delta) {
   // Update DDoS area damage
   for (let w of wpns) {
     if (w.type === 'ddos') {
-      const range = 80 + w.lvl * 10;
+      const baseRange = 80 + w.lvl * 10;
+      const range = baseRange * auraSizeMult;
       for (let i = enemies.length - 1; i >= 0; i--) {
         const e = enemies[i];
         const d = Math.sqrt((p.x - e.x) ** 2 + (p.y - e.y) ** 2);
@@ -615,7 +635,7 @@ function update(time, delta) {
   drawGame();
 }
 
-function spawnEnemy(type) {
+function spawnEnemy(type, difficultyMult = 1) {
   const edge = Math.floor(Math.random() * 4);
   let x, y;
 
@@ -623,51 +643,61 @@ function spawnEnemy(type) {
   else if (edge === 1) { x = 820; y = Math.random() * 600; }
   else if (edge === 2) { x = Math.random() * 800; y = 620; }
   else { x = -20; y = Math.random() * 600; }
-
+  
+  // Apply difficulty scaling
+  const hpMult = difficultyMult;
+  const spdMult = 1 + (difficultyMult - 1) * 0.3; // Speed increases slower
+  const xpMult = difficultyMult;
+  const goldMult = difficultyMult;
+  
   if (type === 'bug') {
+    const baseHp = 20, baseSpd = 80, baseXp = 1, baseGold = 2;
     const e = {
       type: 'bug',
       x: x,
       y: y,
-      hp: 20,
-      maxHp: 20,
-      spd: 80,
+      hp: Math.floor(baseHp * hpMult),
+      maxHp: Math.floor(baseHp * hpMult),
+      spd: Math.floor(baseSpd * spdMult),
       rad: 8,
-      xp: 1,
-      gold: 2,
+      xp: Math.floor(baseXp * xpMult),
+      gold: Math.floor(baseGold * goldMult),
       color: 0xff0000,
+      difficultyMult: difficultyMult,
       sprite: sceneRef.add.sprite(x, y, 'bug').setScale(2).setOrigin(0.5)
     };
     enemies.push(e);
   } else if (type === 'virus') {
-    spriteKey = 'virus';
+    const baseHp = 10, baseSpd = 140, baseXp = 2, baseGold = 4;
     const e = {
       type: 'virus',
       x: x,
       y: y,
-      hp: 10,
-      maxHp: 10,
-      spd: 140,
+      hp: Math.floor(baseHp * hpMult),
+      maxHp: Math.floor(baseHp * hpMult),
+      spd: Math.floor(baseSpd * spdMult),
       rad: 6,
-      xp: 2,
-      gold: 4,
+      xp: Math.floor(baseXp * xpMult),
+      gold: Math.floor(baseGold * goldMult),
       color: 0xff00ff,
+      difficultyMult: difficultyMult,
       sprite: sceneRef.add.sprite(x, y, 'virus').setScale(2).setOrigin(0.5)
     };
     enemies.push(e);
   } else if (type === 'trojan') {
-    spriteKey = 'trojan';
+    const baseHp = 80, baseSpd = 50, baseXp = 5, baseGold = 10;
     const e = {
       type: 'trojan',
       x: x,
       y: y,
-      hp: 80,
-      maxHp: 80,
-      spd: 50,
+      hp: Math.floor(baseHp * hpMult),
+      maxHp: Math.floor(baseHp * hpMult),
+      spd: Math.floor(baseSpd * spdMult),
       rad: 12,
-      xp: 5,
-      gold: 10,
+      xp: Math.floor(baseXp * xpMult),
+      gold: Math.floor(baseGold * goldMult),
       color: 0x0000ff,
+      difficultyMult: difficultyMult,
       sprite: sceneRef.add.sprite(x, y, 'trojan').setScale(2.5).setOrigin(0.5)
     };
     enemies.push(e);
@@ -693,16 +723,29 @@ function fireFirewall(w, now) {
     const len = Math.sqrt(dx * dx + dy * dy);
 
     if (len > 0) {
-      const spd = 400;
-      projs.push({
-        x: p.x,
-        y: p.y,
-        vx: (dx / len) * spd,
-        vy: (dy / len) * spd,
-        dmg: Math.floor(w.dmg * allDmgMult),
-        rad: 4,
-        color: 0x00ff00
-      });
+      const baseSpd = 400;
+      const spd = baseSpd * projSpdMult;
+      const count = Math.max(1, Math.floor(projCountMult));
+      
+      // Fire multiple projectiles if upgraded
+      for (let i = 0; i < count; i++) {
+        let angle = Math.atan2(dy, dx);
+        // Spread projectiles slightly if multiple
+        if (count > 1) {
+          const spread = (i - (count - 1) / 2) * 0.1;
+          angle += spread;
+        }
+        
+        projs.push({
+          x: p.x,
+          y: p.y,
+          vx: Math.cos(angle) * spd,
+          vy: Math.sin(angle) * spd,
+          dmg: Math.floor(w.dmg * allDmgMult),
+          rad: 4,
+          color: 0x00ff00
+        });
+      }
       playTone(sceneRef, 200, 0.1);
     }
   }
@@ -714,7 +757,8 @@ function drawGame() {
   // Draw DDoS aura
   for (let w of wpns) {
     if (w.type === 'ddos') {
-      const range = 80 + w.lvl * 10;
+      const baseRange = 80 + w.lvl * 10;
+      const range = baseRange * auraSizeMult;
       g.lineStyle(2, 0x00ff00, 0.3);
       g.strokeCircle(p.x, p.y, range);
     }
@@ -830,8 +874,10 @@ function endGame() {
 }
 
 function fireMalware(w, now) {
-  const dirs = 8;
-  const spd = 300;
+  const baseDirs = 8;
+  const dirs = Math.max(8, Math.floor(baseDirs * projCountMult));
+  const baseSpd = 300;
+  const spd = baseSpd * projSpdMult;
   for (let i = 0; i < dirs; i++) {
     const angle = (i / dirs) * Math.PI * 2;
     projs.push({
@@ -854,7 +900,8 @@ function fireHook(w, now) {
     const dy = nearest.y - p.y;
     const len = Math.sqrt(dx * dx + dy * dy);
     if (len > 0) {
-      const spd = 350;
+      const baseSpd = 350;
+      const spd = baseSpd * projSpdMult;
       const hook = {
         x: p.x,
         y: p.y,
@@ -1245,7 +1292,10 @@ function getUpgradeOptions() {
   all.push({ type: 'pickup', name: '+5% Pickup Range', desc: 'Larger magnet range' });
   all.push({ type: 'damage', name: '+10% All Damage', desc: 'Boost all weapons' });
   all.push({ type: 'heal', name: 'Heal 50%', desc: 'Restore half HP' });
-
+  all.push({ type: 'projcount', name: '+1 Projectile', desc: 'Fire extra projectile' });
+  all.push({ type: 'projspeed', name: '+20% Proj Speed', desc: 'Faster projectiles' });
+  all.push({ type: 'aurasize', name: '+25% Aura Size', desc: 'Larger DDoS aura' });
+  
   // Shuffle and pick 3
   for (let i = all.length - 1; i > 0; i--) {
     const j = Math.floor(Math.random() * (i + 1));
@@ -1283,6 +1333,12 @@ function applyUpgrade(opt) {
     allDmgMult *= 1.1;
   } else if (opt.type === 'heal') {
     hp = Math.min(maxHp, Math.floor(hp + maxHp * 0.5));
+  } else if (opt.type === 'projcount') {
+    projCountMult += 1;
+  } else if (opt.type === 'projspeed') {
+    projSpdMult *= 1.2;
+  } else if (opt.type === 'aurasize') {
+    auraSizeMult *= 1.25;
   }
 }
 
