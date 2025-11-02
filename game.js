@@ -1,11 +1,15 @@
-// Platanus Hack 25: Snake Game
-// Navigate the snake around the "PLATANUS HACK ARCADE" title made of blocks!
-
+// Hacker Survivors - Cyberpunk Survivor Game
 const config = {
   type: Phaser.AUTO,
   width: 800,
   height: 600,
-  backgroundColor: '#000000',
+  backgroundColor: '#0a0a0a',
+  physics: {
+    default: 'arcade',
+    arcade: {
+      debug: false
+    }
+  },
   scene: {
     create: create,
     update: update
@@ -14,345 +18,993 @@ const config = {
 
 const game = new Phaser.Game(config);
 
-// Game variables
-let snake = [];
-let snakeSize = 15;
-let direction = { x: 1, y: 0 };
-let nextDirection = { x: 1, y: 0 };
-let food;
-let score = 0;
-let scoreText;
-let titleBlocks = [];
-let gameOver = false;
-let moveTimer = 0;
-let moveDelay = 150;
-let graphics;
-
-// Pixel font patterns (5x5 grid for each letter)
-const letters = {
-  P: [[1,1,1,1],[1,0,0,1],[1,1,1,1],[1,0,0,0],[1,0,0,0]],
-  L: [[1,0,0,0],[1,0,0,0],[1,0,0,0],[1,0,0,0],[1,1,1,1]],
-  A: [[0,1,1,0],[1,0,0,1],[1,1,1,1],[1,0,0,1],[1,0,0,1]],
-  T: [[1,1,1,1],[0,1,0,0],[0,1,0,0],[0,1,0,0],[0,1,0,0]],
-  N: [[1,0,0,1],[1,1,0,1],[1,0,1,1],[1,0,0,1],[1,0,0,1]],
-  U: [[1,0,0,1],[1,0,0,1],[1,0,0,1],[1,0,0,1],[1,1,1,1]],
-  S: [[0,1,1,1],[1,0,0,0],[0,1,1,0],[0,0,0,1],[1,1,1,0]],
-  H: [[1,0,0,1],[1,0,0,1],[1,1,1,1],[1,0,0,1],[1,0,0,1]],
-  C: [[0,1,1,1],[1,0,0,0],[1,0,0,0],[1,0,0,0],[0,1,1,1]],
-  K: [[1,0,0,1],[1,0,1,0],[1,1,0,0],[1,0,1,0],[1,0,0,1]],
-  '2': [[1,1,1,0],[0,0,0,1],[0,1,1,0],[1,0,0,0],[1,1,1,1]],
-  '5': [[1,1,1,1],[1,0,0,0],[1,1,1,0],[0,0,0,1],[1,1,1,0]],
-  ':': [[0,0,0,0],[0,1,0,0],[0,0,0,0],[0,1,0,0],[0,0,0,0]],
-  R: [[1,1,1,0],[1,0,0,1],[1,1,1,0],[1,0,1,0],[1,0,0,1]],
-  D: [[1,1,1,0],[1,0,0,1],[1,0,0,1],[1,0,0,1],[1,1,1,0]],
-  E: [[1,1,1,1],[1,0,0,0],[1,1,1,0],[1,0,0,0],[1,1,1,1]]
-};
-
-// Bold font for ARCADE (filled/solid style)
-const boldLetters = {
-  A: [[1,1,1,1,1],[1,1,0,1,1],[1,1,1,1,1],[1,1,0,1,1],[1,1,0,1,1]],
-  R: [[1,1,1,1,0],[1,1,0,1,1],[1,1,1,1,0],[1,1,0,1,1],[1,1,0,1,1]],
-  C: [[1,1,1,1,1],[1,1,0,0,0],[1,1,0,0,0],[1,1,0,0,0],[1,1,1,1,1]],
-  D: [[1,1,1,1,0],[1,1,0,1,1],[1,1,0,1,1],[1,1,0,1,1],[1,1,1,1,0]],
-  E: [[1,1,1,1,1],[1,1,0,0,0],[1,1,1,1,0],[1,1,0,0,0],[1,1,1,1,1]]
-};
+// Game state
+let p, enemies, projs, xpCrys, goldDrops, wpns, state, lvl, xp, hp, maxHp, spd, spawnT, lastFire, keys, g, sceneRef;
+let gameTime, startTime, uiTexts, upgradeCards, xpGain, pickupRange, allDmgMult, particles, kills, gold;
+const MENU = 0, PLAYING = 1, LEVELUP = 2, GAMEOVER = 3, SHOP = 4;
 
 function create() {
-  const scene = this;
-  graphics = this.add.graphics();
-
-  // Build "PLATANUS HACK ARCADE" in cyan - centered and grid-aligned
-  // PLATANUS: 8 letters × (4 cols + 1 spacing) = 40 blocks, but last letter no spacing = 39 blocks × 15px = 585px
-  let x = Math.floor((800 - 585) / 2 / snakeSize) * snakeSize;
-  let y = Math.floor(180 / snakeSize) * snakeSize;
-  'PLATANUS'.split('').forEach(char => {
-    x = drawLetter(char, x, y, 0x00ffff);
-  });
-
-  // HACK: 4 letters × (4 cols + 1 spacing) = 20 blocks, but last letter no spacing = 19 blocks × 15px = 285px
-  x = Math.floor((800 - 285) / 2 / snakeSize) * snakeSize;
-  y = Math.floor(280 / snakeSize) * snakeSize;
-  'HACK'.split('').forEach(char => {
-    x = drawLetter(char, x, y, 0x00ffff);
-  });
-
-  // ARCADE: 6 letters × (5 cols + 1 spacing) = 36 blocks, but last letter no spacing = 35 blocks × 15px = 525px
-  x = Math.floor((800 - 525) / 2 / snakeSize) * snakeSize;
-  y = Math.floor(380 / snakeSize) * snakeSize;
-  'ARCADE'.split('').forEach(char => {
-    x = drawLetter(char, x, y, 0xff00ff, true);
-  });
-
-  // Score display
-  scoreText = this.add.text(16, 16, 'Score: 0', {
-    fontSize: '24px',
-    fontFamily: 'Arial, sans-serif',
-    color: '#00ff00'
-  });
-
-  // Instructions
-  this.add.text(400, 560, 'Arrow Keys | Avoid Walls, Yourself & The Title!', {
-    fontSize: '16px',
-    fontFamily: 'Arial, sans-serif',
-    color: '#888888',
-    align: 'center'
-  }).setOrigin(0.5);
-
-  // Initialize snake (start top left)
-  snake = [
-    { x: 75, y: 60 },
-    { x: 60, y: 60 },
-    { x: 45, y: 60 }
-  ];
-
-  // Spawn initial food
-  spawnFood();
-
-  // Keyboard input
-  this.input.keyboard.on('keydown', (event) => {
-    if (gameOver && event.key === 'r') {
-      restartGame(scene);
-      return;
-    }
-
-    if (event.key === 'ArrowUp' && direction.y === 0) {
-      nextDirection = { x: 0, y: -1 };
-    } else if (event.key === 'ArrowDown' && direction.y === 0) {
-      nextDirection = { x: 0, y: 1 };
-    } else if (event.key === 'ArrowLeft' && direction.x === 0) {
-      nextDirection = { x: -1, y: 0 };
-    } else if (event.key === 'ArrowRight' && direction.x === 0) {
-      nextDirection = { x: 1, y: 0 };
-    }
-  });
-
-  playTone(this, 440, 0.1);
+  sceneRef = this;
+  g = this.add.graphics();
+  
+  // Always start with title screen
+  // Load high score
+  let highScore = 0;
+  try {
+    highScore = parseInt(localStorage.getItem('hackerSurvivorsHighScore') || '0');
+  } catch(e) {}
+  // Show title screen
+  showTitleScreen(highScore);
 }
 
-function drawLetter(char, startX, startY, color, useBold = false) {
-  const pattern = useBold ? boldLetters[char] : letters[char];
-  if (!pattern) return startX + 30;
-
-  for (let row = 0; row < pattern.length; row++) {
-    for (let col = 0; col < pattern[row].length; col++) {
-      if (pattern[row][col]) {
-        const blockX = startX + col * snakeSize;
-        const blockY = startY + row * snakeSize;
-        titleBlocks.push({ x: blockX, y: blockY, color: color });
-      }
-    }
+function showTitleScreen(highScore) {
+  state = MENU;
+  
+  // Clear any existing UI elements
+  if (uiTexts) {
+    if (uiTexts.hp) uiTexts.hp.destroy();
+    if (uiTexts.time) uiTexts.time.destroy();
+    if (uiTexts.xp) uiTexts.xp.destroy();
+    if (uiTexts.gold) uiTexts.gold.destroy();
+    uiTexts = null;
   }
-  return startX + (pattern[0].length + 1) * snakeSize;
-}
-
-function update(_time, delta) {
-  if (gameOver) return;
-
-  moveTimer += delta;
-  if (moveTimer >= moveDelay) {
-    moveTimer = 0;
-    direction = nextDirection;
-    moveSnake(this);
-  }
-
-  drawGame();
-}
-
-function moveSnake(scene) {
-  const head = snake[0];
-  const newHead = {
-    x: head.x + direction.x * snakeSize,
-    y: head.y + direction.y * snakeSize
-  };
-
-  // Check wall collision
-  if (newHead.x < 0 || newHead.x >= 800 || newHead.y < 0 || newHead.y >= 600) {
-    endGame(scene);
-    return;
-  }
-
-  // Check self collision
-  for (let segment of snake) {
-    if (segment.x === newHead.x && segment.y === newHead.y) {
-      endGame(scene);
-      return;
-    }
-  }
-
-  // Check title block collision
-  for (let block of titleBlocks) {
-    if (newHead.x === block.x && newHead.y === block.y) {
-      endGame(scene);
-      return;
-    }
-  }
-
-  snake.unshift(newHead);
-
-  // Check food collision
-  if (newHead.x === food.x && newHead.y === food.y) {
-    score += 10;
-    scoreText.setText('Score: ' + score);
-    spawnFood();
-    playTone(scene, 880, 0.1);
-
-    if (moveDelay > 80) {
-      moveDelay -= 2;
-    }
-  } else {
-    snake.pop();
-  }
-}
-
-function spawnFood() {
-  let valid = false;
-  let attempts = 0;
-
-  while (!valid && attempts < 100) {
-    attempts++;
-    const gridX = Math.floor(Math.random() * 53) * snakeSize;
-    const gridY = Math.floor(Math.random() * 40) * snakeSize;
-
-    // Check not on snake
-    let onSnake = false;
-    for (let segment of snake) {
-      if (segment.x === gridX && segment.y === gridY) {
-        onSnake = true;
-        break;
-      }
-    }
-
-    // Check not on title blocks
-    let onTitle = false;
-    for (let block of titleBlocks) {
-      if (gridX === block.x && gridY === block.y) {
-        onTitle = true;
-        break;
-      }
-    }
-
-    if (!onSnake && !onTitle) {
-      food = { x: gridX, y: gridY };
-      valid = true;
-    }
-  }
-}
-
-function drawGame() {
-  graphics.clear();
-
-  // Draw title blocks
-  titleBlocks.forEach(block => {
-    graphics.fillStyle(block.color, 1);
-    graphics.fillRect(block.x, block.y, snakeSize - 2, snakeSize - 2);
-  });
-
-  // Draw snake
-  snake.forEach((segment, index) => {
-    if (index === 0) {
-      graphics.fillStyle(0x00ff00, 1);
-    } else {
-      graphics.fillStyle(0x00aa00, 1);
-    }
-    graphics.fillRect(segment.x, segment.y, snakeSize - 2, snakeSize - 2);
-  });
-
-  // Draw food
-  graphics.fillStyle(0xff0000, 1);
-  graphics.fillRect(food.x, food.y, snakeSize - 2, snakeSize - 2);
-}
-
-function endGame(scene) {
-  gameOver = true;
-  playTone(scene, 220, 0.5);
-
-  // Semi-transparent overlay
-  const overlay = scene.add.graphics();
-  overlay.fillStyle(0x000000, 0.7);
+  
+  // Clear graphics
+  g.clear();
+  
+  const overlay = sceneRef.add.graphics();
+  overlay.fillStyle(0x000000, 1);
   overlay.fillRect(0, 0, 800, 600);
-
-  // Game Over title with glow effect
-  const gameOverText = scene.add.text(400, 300, 'GAME OVER', {
-    fontSize: '64px',
-    fontFamily: 'Arial, sans-serif',
-    color: '#ff0000',
-    align: 'center',
-    stroke: '#ff6666',
-    strokeThickness: 8
+  
+  sceneRef.add.text(400, 200, 'HACKER SURVIVORS', {
+    fontSize: '56px',
+    fontFamily: 'Arial',
+    color: '#00ffff'
   }).setOrigin(0.5);
-
-  // Pulsing animation for game over text
-  scene.tweens.add({
-    targets: gameOverText,
-    scale: { from: 1, to: 1.1 },
-    alpha: { from: 1, to: 0.8 },
+  
+  sceneRef.add.text(400, 280, 'Survive waves of digital threats!', {
+    fontSize: '24px',
+    fontFamily: 'Arial',
+    color: '#ffffff'
+  }).setOrigin(0.5);
+  
+  if (highScore > 0) {
+    const minutes = Math.floor(highScore / 60000);
+    const seconds = Math.floor((highScore % 60000) / 1000);
+    sceneRef.add.text(400, 330, 'Best Time: ' + minutes + ':' + String(seconds).padStart(2, '0'), {
+      fontSize: '20px',
+      fontFamily: 'Arial',
+      color: '#ffff00'
+    }).setOrigin(0.5);
+  }
+  
+  const startText = sceneRef.add.text(400, 400, 'Press SPACE to Start', {
+    fontSize: '28px',
+    fontFamily: 'Arial',
+    color: '#00ff00'
+  }).setOrigin(0.5);
+  
+  sceneRef.tweens.add({
+    targets: startText,
+    alpha: { from: 1, to: 0.3 },
     duration: 800,
     yoyo: true,
     repeat: -1,
     ease: 'Sine.easeInOut'
   });
-
-  // Score display
-  scene.add.text(400, 400, 'SCORE: ' + score, {
-    fontSize: '36px',
-    fontFamily: 'Arial, sans-serif',
-    color: '#00ffff',
-    align: 'center',
-    stroke: '#000000',
-    strokeThickness: 4
-  }).setOrigin(0.5);
-
-  // Restart instruction with subtle animation
-  const restartText = scene.add.text(400, 480, 'Press R to Restart', {
-    fontSize: '24px',
-    fontFamily: 'Arial, sans-serif',
-    color: '#ffff00',
-    align: 'center',
-    stroke: '#000000',
-    strokeThickness: 3
-  }).setOrigin(0.5);
-
-  // Blinking animation for restart text
-  scene.tweens.add({
-    targets: restartText,
-    alpha: { from: 1, to: 0.3 },
-    duration: 600,
-    yoyo: true,
-    repeat: -1,
-    ease: 'Sine.easeInOut'
+  
+  sceneRef.input.keyboard.once('keydown-SPACE', () => {
+    startGame();
   });
 }
 
-function restartGame(scene) {
-  snake = [
-    { x: 75, y: 60 },
-    { x: 60, y: 60 },
-    { x: 45, y: 60 }
-  ];
-  direction = { x: 1, y: 0 };
-  nextDirection = { x: 1, y: 0 };
-  score = 0;
-  gameOver = false;
-  moveDelay = 150;
-  scoreText.setText('Score: 0');
-  spawnFood();
-  scene.scene.restart();
+function startGame() {
+  // Clear title screen graphics and text
+  sceneRef.children.removeAll();
+  g = sceneRef.add.graphics();
+  initGame();
+}
+
+function initGame() {
+  g = sceneRef.add.graphics();
+  state = PLAYING;
+  
+  // Initialize player
+  p = {
+    x: 400,
+    y: 300,
+    spd: 150,
+    rad: 8
+  };
+  maxHp = 100;
+  hp = maxHp;
+  
+  // Initialize arrays
+  enemies = [];
+  projs = [];
+  xpCrys = [];
+  goldDrops = [];
+  wpns = [];
+  particles = [];
+  lvl = 1;
+  xp = 0;
+  gold = 0;
+  spawnT = 0;
+  lastFire = 0;
+  gameTime = 0;
+  startTime = Date.now();
+  xpGain = 1;
+  pickupRange = 100;
+  allDmgMult = 1;
+  kills = 0;
+  
+  // Keyboard input
+  keys = sceneRef.input.keyboard.addKeys('W,A,S,D,UP,DOWN,LEFT,RIGHT,SHIFT');
+  
+  // Initialize Firewall weapon
+  wpns.push({
+    type: 'firewall',
+    dmg: 10,
+    rate: 1000,
+    lastFire: 0,
+    lvl: 1
+  });
+  
+  // UI elements
+  uiTexts = {
+    hp: sceneRef.add.text(16, 16, 'HP: 100/100', { fontSize: '20px', fontFamily: 'Arial', color: '#00ffff' }),
+    time: sceneRef.add.text(684, 16, 'TIME: 0:00', { fontSize: '20px', fontFamily: 'Arial', color: '#00ffff' }),
+    gold: sceneRef.add.text(220, 16, 'Gold: 0', { fontSize: '20px', fontFamily: 'Arial', color: '#ffaa00' }),
+    xp: sceneRef.add.text(16, 564, 'XP: 0/5 [Lvl 1]', { fontSize: '20px', fontFamily: 'Arial', color: '#ffff00' })
+  };
+  
+  // Initial enemy spawn
+  spawnEnemy('bug');
+}
+
+function update(time, delta) {
+  if (state === MENU) {
+    // Animate title screen background
+    g.clear();
+    const t = time * 0.001;
+    for (let i = 0; i < 20; i++) {
+      const x = 400 + Math.cos(t + i) * 300;
+      const y = 300 + Math.sin(t * 0.5 + i) * 200;
+      g.fillStyle(0x001122, 0.3);
+      g.fillCircle(x, y, 3);
+    }
+    return;
+  }
+  if (state === LEVELUP || state === SHOP) return;
+  if (state !== PLAYING) return;
+  
+  // Check for shop keypress (SHIFT)
+  if (keys.SHIFT && keys.SHIFT.isDown) {
+    const now = time;
+    if (!keys.lastShopPress || now - keys.lastShopPress > 500) {
+      keys.lastShopPress = now;
+      showShop();
+    }
+  }
+  
+  // Update game time
+  gameTime += delta;
+  
+  // Player movement
+  let dx = 0, dy = 0;
+  if (keys.W.isDown || keys.UP.isDown) dy = -1;
+  if (keys.S.isDown || keys.DOWN.isDown) dy = 1;
+  if (keys.A.isDown || keys.LEFT.isDown) dx = -1;
+  if (keys.D.isDown || keys.RIGHT.isDown) dx = 1;
+  
+  if (dx !== 0 || dy !== 0) {
+    const len = Math.sqrt(dx * dx + dy * dy);
+    dx /= len;
+    dy /= len;
+    p.x += dx * p.spd * (delta / 1000);
+    p.y += dy * p.spd * (delta / 1000);
+    
+    // Keep player on screen
+    p.x = Math.max(p.rad, Math.min(800 - p.rad, p.x));
+    p.y = Math.max(p.rad, Math.min(600 - p.rad, p.y));
+  }
+  
+  // Enemy spawning (wave system)
+  const wave = Math.floor(gameTime / 30000);
+  const baseSpawnRate = Math.max(500, 2000 - wave * 100);
+  spawnT += delta;
+  if (spawnT > baseSpawnRate) {
+    spawnT = 0;
+    const maxEnemies = Math.min(100, 10 + wave * 2);
+    if (enemies.length < maxEnemies) {
+      // Spawn based on wave
+      const rand = Math.random();
+      if (wave < 2 || rand < 0.6) {
+        spawnEnemy('bug');
+      } else if (wave < 5 || rand < 0.85) {
+        spawnEnemy('virus');
+      } else {
+        spawnEnemy('trojan');
+      }
+    }
+  }
+  
+  // Update enemies
+  for (let i = enemies.length - 1; i >= 0; i--) {
+    const e = enemies[i];
+    const dist = Math.sqrt((p.x - e.x) ** 2 + (p.y - e.y) ** 2);
+    if (dist > 0) {
+      let dx = (p.x - e.x) / dist;
+      let dy = (p.y - e.y) / dist;
+      
+      // Virus has erratic movement
+      if (e.type === 'virus') {
+        const angle = Math.atan2(dy, dx) + (Math.random() - 0.5) * 0.5;
+        dx = Math.cos(angle);
+        dy = Math.sin(angle);
+      }
+      
+      e.x += dx * e.spd * (delta / 1000);
+      e.y += dy * e.spd * (delta / 1000);
+    }
+    
+    // Check enemy collision with player
+    const pd = Math.sqrt((p.x - e.x) ** 2 + (p.y - e.y) ** 2);
+    if (pd < p.rad + e.rad) {
+      const dmg = e.type === 'trojan' ? 25 : (e.type === 'virus' ? 5 : 10);
+      hp -= dmg;
+      playTone(sceneRef, 150, 0.2);
+      sceneRef.cameras.main.shake(200, 0.01);
+      createParticles(e.x, e.y, 0xff0000, 8);
+      enemies.splice(i, 1);
+      if (hp <= 0) {
+        endGame();
+        return;
+      }
+      continue;
+    }
+  }
+  
+  const now = time;
+  
+  // Update projectiles
+  for (let i = projs.length - 1; i >= 0; i--) {
+    const proj = projs[i];
+    
+    // Handle boomerang return
+    if (proj.owner === 'hook') {
+      const distFromStart = Math.sqrt((proj.x - proj.startX) ** 2 + (proj.y - proj.startY) ** 2);
+      if (distFromStart > 300 && !proj.returning) {
+        proj.returning = true;
+        const dx = p.x - proj.x;
+        const dy = p.y - proj.y;
+        const len = Math.sqrt(dx * dx + dy * dy);
+        if (len > 0) {
+          proj.vx = (dx / len) * 400;
+          proj.vy = (dy / len) * 400;
+        }
+      }
+      if (proj.returning) {
+        const distToPlayer = Math.sqrt((proj.x - p.x) ** 2 + (proj.y - p.y) ** 2);
+        if (distToPlayer < 20) {
+          projs.splice(i, 1);
+          continue;
+        }
+      }
+    }
+    
+    proj.x += proj.vx * (delta / 1000);
+    proj.y += proj.vy * (delta / 1000);
+    
+    // Remove if off screen (unless returning hook)
+    if (proj.owner !== 'hook' || !proj.returning) {
+      if (proj.x < -50 || proj.x > 850 || proj.y < -50 || proj.y > 650) {
+        projs.splice(i, 1);
+        continue;
+      }
+    }
+    
+    // Check collision with enemies
+    for (let j = enemies.length - 1; j >= 0; j--) {
+      const e = enemies[j];
+      const d = Math.sqrt((proj.x - e.x) ** 2 + (proj.y - e.y) ** 2);
+      if (d < proj.rad + e.rad) {
+        e.hp -= proj.dmg;
+        playTone(sceneRef, 100, 0.05);
+        createParticles(e.x, e.y, e.color, 4);
+        if (e.hp <= 0) {
+          xpCrys.push({ x: e.x, y: e.y, rad: 5, val: e.xp });
+          goldDrops.push({ x: e.x, y: e.y, rad: 4, val: e.gold || Math.floor(e.xp * 2) });
+          createParticles(e.x, e.y, e.color, 12);
+          enemies.splice(j, 1);
+          kills++;
+        }
+        // Hook can hit multiple times if returning
+        if (proj.owner !== 'hook' || !proj.returning) {
+          projs.splice(i, 1);
+          break;
+        }
+      }
+    }
+  }
+  
+  // Update XP crystals
+  for (let i = xpCrys.length - 1; i >= 0; i--) {
+    const crys = xpCrys[i];
+    const dist = Math.sqrt((p.x - crys.x) ** 2 + (p.y - crys.y) ** 2);
+    if (dist < pickupRange) {
+      const pull = 300;
+      const d = Math.max(1, dist);
+      crys.x += ((p.x - crys.x) / d) * pull * (delta / 1000);
+      crys.y += ((p.y - crys.y) / d) * pull * (delta / 1000);
+    }
+    
+    const pd = Math.sqrt((p.x - crys.x) ** 2 + (p.y - crys.y) ** 2);
+    if (pd < p.rad + crys.rad) {
+      xp += Math.floor(crys.val * xpGain);
+      playTone(sceneRef, 600, 0.1);
+      createParticles(crys.x, crys.y, 0xffff00, 6);
+      xpCrys.splice(i, 1);
+      
+      const reqXp = 5 + (lvl - 1) * 5;
+      if (xp >= reqXp) {
+        xp -= reqXp;
+        lvl++;
+        showLevelUp();
+      }
+    }
+  }
+  
+  // Update gold drops
+  for (let i = goldDrops.length - 1; i >= 0; i--) {
+    const drop = goldDrops[i];
+    const dist = Math.sqrt((p.x - drop.x) ** 2 + (p.y - drop.y) ** 2);
+    if (dist < pickupRange) {
+      const pull = 300;
+      const d = Math.max(1, dist);
+      drop.x += ((p.x - drop.x) / d) * pull * (delta / 1000);
+      drop.y += ((p.y - drop.y) / d) * pull * (delta / 1000);
+    }
+    
+    const pd = Math.sqrt((p.x - drop.x) ** 2 + (p.y - drop.y) ** 2);
+    if (pd < p.rad + drop.rad) {
+      gold += drop.val;
+      playTone(sceneRef, 800, 0.1);
+      createParticles(drop.x, drop.y, 0xffaa00, 6);
+      goldDrops.splice(i, 1);
+    }
+  }
+  
+  // Update weapons
+  for (let w of wpns) {
+    if (w.type === 'firewall' && now - w.lastFire >= w.rate) {
+      fireFirewall(w, now);
+      w.lastFire = now;
+    } else if (w.type === 'malware' && now - w.lastFire >= w.rate) {
+      fireMalware(w, now);
+      w.lastFire = now;
+    } else if (w.type === 'ddos') {
+      updateDDoS(w, now);
+    } else if (w.type === 'hook' && now - w.lastFire >= w.rate) {
+      fireHook(w, now);
+      w.lastFire = now;
+    }
+  }
+  
+  // Update DDoS area damage
+  for (let w of wpns) {
+    if (w.type === 'ddos') {
+      const range = 80 + w.lvl * 10;
+      for (let i = enemies.length - 1; i >= 0; i--) {
+        const e = enemies[i];
+        const d = Math.sqrt((p.x - e.x) ** 2 + (p.y - e.y) ** 2);
+      if (d < range && now - (e.lastDDoS || 0) >= 200) {
+        e.hp -= w.dmg;
+        e.lastDDoS = now;
+        createParticles(e.x, e.y, e.color, 2);
+        if (e.hp <= 0) {
+          xpCrys.push({ x: e.x, y: e.y, rad: 5, val: e.xp });
+          goldDrops.push({ x: e.x, y: e.y, rad: 4, val: e.gold || Math.floor(e.xp * 2) });
+          createParticles(e.x, e.y, e.color, 12);
+          enemies.splice(i, 1);
+          kills++;
+        }
+      }
+      }
+    }
+  }
+  
+  // Update particles
+  for (let i = particles.length - 1; i >= 0; i--) {
+    const part = particles[i];
+    part.x += part.vx * (delta / 1000);
+    part.y += part.vy * (delta / 1000);
+    part.life -= delta;
+    part.alpha = Math.max(0, part.life / 500);
+    if (part.life <= 0) {
+      particles.splice(i, 1);
+    }
+  }
+  
+  // Update UI
+  const minutes = Math.floor(gameTime / 60000);
+  const seconds = Math.floor((gameTime % 60000) / 1000);
+  uiTexts.time.setText('TIME: ' + minutes + ':' + String(seconds).padStart(2, '0'));
+  uiTexts.hp.setText('HP: ' + Math.max(0, Math.floor(hp)) + '/' + maxHp);
+  uiTexts.gold.setText('Gold: ' + gold);
+  const reqXp = 5 + (lvl - 1) * 5;
+  uiTexts.xp.setText('XP: ' + xp + '/' + reqXp + ' [Lvl ' + lvl + ']');
+  
+  drawGame();
+}
+
+function spawnEnemy(type) {
+  const edge = Math.floor(Math.random() * 4);
+  let x, y;
+  
+  if (edge === 0) { x = Math.random() * 800; y = -20; }
+  else if (edge === 1) { x = 820; y = Math.random() * 600; }
+  else if (edge === 2) { x = Math.random() * 800; y = 620; }
+  else { x = -20; y = Math.random() * 600; }
+  
+  if (type === 'bug') {
+    enemies.push({
+      type: 'bug',
+      x: x,
+      y: y,
+      hp: 20,
+      maxHp: 20,
+      spd: 80,
+      rad: 8,
+      xp: 1,
+      gold: 2,
+      color: 0xff0000
+    });
+  } else if (type === 'virus') {
+    enemies.push({
+      type: 'virus',
+      x: x,
+      y: y,
+      hp: 10,
+      maxHp: 10,
+      spd: 140,
+      rad: 6,
+      xp: 2,
+      gold: 4,
+      color: 0xff00ff
+    });
+  } else if (type === 'trojan') {
+    enemies.push({
+      type: 'trojan',
+      x: x,
+      y: y,
+      hp: 80,
+      maxHp: 80,
+      spd: 50,
+      rad: 12,
+      xp: 5,
+      gold: 10,
+      color: 0x0000ff
+    });
+  }
+}
+
+function fireFirewall(w, now) {
+  // Find nearest enemy
+  let nearest = null;
+  let minDist = Infinity;
+  
+  for (let e of enemies) {
+    const dist = Math.sqrt((p.x - e.x) ** 2 + (p.y - e.y) ** 2);
+    if (dist < minDist) {
+      minDist = dist;
+      nearest = e;
+    }
+  }
+  
+  if (nearest) {
+    const dx = nearest.x - p.x;
+    const dy = nearest.y - p.y;
+    const len = Math.sqrt(dx * dx + dy * dy);
+    
+    if (len > 0) {
+      const spd = 400;
+      projs.push({
+        x: p.x,
+        y: p.y,
+        vx: (dx / len) * spd,
+        vy: (dy / len) * spd,
+        dmg: Math.floor(w.dmg * allDmgMult),
+        rad: 4,
+        color: 0x00ff00
+      });
+      playTone(sceneRef, 200, 0.1);
+    }
+  }
+}
+
+function drawGame() {
+  g.clear();
+  
+  // Draw DDoS aura
+  for (let w of wpns) {
+    if (w.type === 'ddos') {
+      const range = 80 + w.lvl * 10;
+      g.lineStyle(2, 0x00ff00, 0.3);
+      g.strokeCircle(p.x, p.y, range);
+    }
+  }
+  
+  // Draw player
+  g.fillStyle(0x00ffff, 1);
+  g.fillCircle(p.x, p.y, p.rad);
+  
+  // Draw enemies
+  for (let e of enemies) {
+    g.fillStyle(e.color, 1);
+    g.fillCircle(e.x, e.y, e.rad);
+  }
+  
+  // Draw projectiles
+  for (let proj of projs) {
+    g.fillStyle(proj.color, 1);
+    g.fillCircle(proj.x, proj.y, proj.rad);
+  }
+  
+  // Draw XP crystals
+  for (let crys of xpCrys) {
+    g.fillStyle(0xffff00, 1);
+    g.fillCircle(crys.x, crys.y, crys.rad);
+  }
+  
+  // Draw gold drops
+  for (let drop of goldDrops) {
+    g.fillStyle(0xffaa00, 1);
+    g.fillCircle(drop.x, drop.y, drop.rad);
+  }
+  
+  // Draw particles
+  for (let part of particles) {
+    g.fillStyle(part.color, part.alpha);
+    g.fillCircle(part.x, part.y, part.rad);
+  }
+  
+  // Draw HP bar
+  g.fillStyle(0x333333, 1);
+  g.fillRect(16, 48, 200, 12);
+  g.fillStyle(0xff0000, 1);
+  g.fillRect(16, 48, (hp / maxHp) * 200, 12);
+  
+  // Draw XP bar
+  const reqXp = 5 + (lvl - 1) * 5;
+  g.fillStyle(0x333333, 1);
+  g.fillRect(16, 596, 200, 8);
+  g.fillStyle(0xffff00, 1);
+  g.fillRect(16, 596, (xp / reqXp) * 200, 8);
+}
+
+function createParticles(x, y, color, count) {
+  for (let i = 0; i < count; i++) {
+    const angle = (Math.PI * 2 * i) / count + Math.random() * 0.5;
+    const speed = 50 + Math.random() * 100;
+    particles.push({
+      x: x,
+      y: y,
+      vx: Math.cos(angle) * speed,
+      vy: Math.sin(angle) * speed,
+      rad: 2 + Math.random() * 3,
+      color: color,
+      life: 500,
+      alpha: 1
+    });
+  }
+}
+
+function endGame() {
+  state = GAMEOVER;
+  playTone(sceneRef, 220, 0.5);
+  setTimeout(() => playTone(sceneRef, 180, 0.3), 100);
+  setTimeout(() => playTone(sceneRef, 140, 0.3), 200);
+  
+  // Save high score
+  try {
+    const stored = parseInt(localStorage.getItem('hackerSurvivorsHighScore') || '0');
+    if (gameTime > stored) {
+      localStorage.setItem('hackerSurvivorsHighScore', gameTime.toString());
+    }
+  } catch(e) {}
+  
+  const overlay = sceneRef.add.graphics();
+  overlay.fillStyle(0x000000, 0.7);
+  overlay.fillRect(0, 0, 800, 600);
+  
+  const minutes = Math.floor(gameTime / 60000);
+  const seconds = Math.floor((gameTime % 60000) / 1000);
+  
+  sceneRef.add.text(400, 250, 'GAME OVER', {
+    fontSize: '64px',
+    fontFamily: 'Arial',
+    color: '#ff0000'
+  }).setOrigin(0.5);
+  
+  sceneRef.add.text(400, 320, 'Survived: ' + minutes + ':' + String(seconds).padStart(2, '0'), {
+    fontSize: '32px',
+    fontFamily: 'Arial',
+    color: '#00ffff'
+  }).setOrigin(0.5);
+  
+  sceneRef.add.text(400, 370, 'Kills: ' + kills, {
+    fontSize: '28px',
+    fontFamily: 'Arial',
+    color: '#00ffff'
+  }).setOrigin(0.5);
+  
+  sceneRef.add.text(400, 450, 'Press SPACE to Restart', {
+    fontSize: '24px',
+    fontFamily: 'Arial',
+    color: '#ffff00'
+  }).setOrigin(0.5);
+  
+  sceneRef.input.keyboard.once('keydown-SPACE', () => {
+    sceneRef.scene.restart();
+  });
+}
+
+function fireMalware(w, now) {
+  const dirs = 8;
+  const spd = 300;
+  for (let i = 0; i < dirs; i++) {
+    const angle = (i / dirs) * Math.PI * 2;
+    projs.push({
+      x: p.x,
+      y: p.y,
+      vx: Math.cos(angle) * spd,
+      vy: Math.sin(angle) * spd,
+      dmg: Math.floor(w.dmg * allDmgMult),
+      rad: 4,
+      color: 0x00ff00
+    });
+  }
+  playTone(sceneRef, 200, 0.1);
+}
+
+function fireHook(w, now) {
+  const nearest = findNearestEnemy();
+  if (nearest) {
+    const dx = nearest.x - p.x;
+    const dy = nearest.y - p.y;
+    const len = Math.sqrt(dx * dx + dy * dy);
+    if (len > 0) {
+      const spd = 350;
+      const hook = {
+        x: p.x,
+        y: p.y,
+        vx: (dx / len) * spd,
+        vy: (dy / len) * spd,
+        dmg: Math.floor(w.dmg * allDmgMult),
+        rad: 5,
+        color: 0xff00ff,
+        owner: 'hook',
+        startX: p.x,
+        startY: p.y,
+        returning: false
+      };
+      projs.push(hook);
+      playTone(sceneRef, 200, 0.1);
+    }
+  }
+}
+
+function updateDDoS(w, now) {
+  // Continuous damage handled in update loop
+}
+
+function findNearestEnemy() {
+  let nearest = null;
+  let minDist = Infinity;
+  for (let e of enemies) {
+    const dist = Math.sqrt((p.x - e.x) ** 2 + (p.y - e.y) ** 2);
+    if (dist < minDist) {
+      minDist = dist;
+      nearest = e;
+    }
+  }
+  return nearest;
+}
+
+function showShop() {
+  state = SHOP;
+  playTone(sceneRef, 440, 0.2);
+  
+  const overlay = sceneRef.add.graphics();
+  overlay.fillStyle(0x000000, 0.85);
+  overlay.fillRect(0, 0, 800, 600);
+  
+  const title = sceneRef.add.text(400, 80, 'TREASURE SHOP', {
+    fontSize: '48px',
+    fontFamily: 'Arial',
+    color: '#ffaa00'
+  }).setOrigin(0.5);
+  
+  const goldText = sceneRef.add.text(400, 130, 'Gold: ' + gold, {
+    fontSize: '32px',
+    fontFamily: 'Arial',
+    color: '#ffaa00'
+  }).setOrigin(0.5);
+  
+  // Generate shop items
+  const items = getShopItems();
+  upgradeCards = [];
+  
+  for (let i = 0; i < Math.min(4, items.length); i++) {
+    const item = items[i];
+    const cardX = 150 + (i % 2) * 400;
+    const cardY = 250 + Math.floor(i / 2) * 200;
+    
+    const card = sceneRef.add.graphics();
+    card.fillStyle(0x1a1a1a, 1);
+    const canAfford = gold >= item.cost;
+    card.lineStyle(2, canAfford ? 0xffaa00 : 0x666666, 1);
+    card.fillRect(cardX - 150, cardY - 70, 300, 140);
+    card.strokeRect(cardX - 150, cardY - 70, 300, 140);
+    
+    const name = sceneRef.add.text(cardX, cardY - 40, item.name, {
+      fontSize: '22px',
+      fontFamily: 'Arial',
+      color: canAfford ? '#ffaa00' : '#666666'
+    }).setOrigin(0.5);
+    
+    const desc = sceneRef.add.text(cardX, cardY + 10, item.desc, {
+      fontSize: '16px',
+      fontFamily: 'Arial',
+      color: '#ffffff'
+    }).setOrigin(0.5);
+    
+    const cost = sceneRef.add.text(cardX, cardY + 50, 'Cost: ' + item.cost + ' Gold', {
+      fontSize: '18px',
+      fontFamily: 'Arial',
+      color: canAfford ? '#00ff00' : '#ff0000'
+    }).setOrigin(0.5);
+    
+    upgradeCards.push({ card, name, desc, cost, opt: item, x: cardX, y: cardY });
+  }
+  
+  const closeText = sceneRef.add.text(400, 550, 'Press ESC or SHIFT to Close', {
+    fontSize: '20px',
+    fontFamily: 'Arial',
+    color: '#ffffff'
+  }).setOrigin(0.5);
+  
+  // Click handler
+  const clickHandler = (pointer) => {
+    for (let i = 0; i < upgradeCards.length; i++) {
+      const uc = upgradeCards[i];
+      const dx = pointer.x - uc.x;
+      const dy = pointer.y - uc.y;
+      if (dx >= -150 && dx <= 150 && dy >= -70 && dy <= 70) {
+        if (gold >= uc.opt.cost) {
+          gold -= uc.opt.cost;
+          applyUpgrade(uc.opt);
+          playTone(sceneRef, 600, 0.15);
+          closeShop();
+        } else {
+          playTone(sceneRef, 200, 0.1);
+        }
+        break;
+      }
+    }
+  };
+  
+  const closeShop = () => {
+    state = PLAYING;
+    overlay.destroy();
+    title.destroy();
+    goldText.destroy();
+    closeText.destroy();
+    for (let uc2 of upgradeCards) {
+      uc2.card.destroy();
+      uc2.name.destroy();
+      uc2.desc.destroy();
+      uc2.cost.destroy();
+    }
+    upgradeCards = [];
+    sceneRef.input.off('pointerdown', clickHandler);
+    keys.ESC.off('down');
+    keys.SHIFT.off('down');
+  };
+  
+  sceneRef.input.once('pointerdown', clickHandler);
+  keys.ESC = sceneRef.input.keyboard.addKey('ESC');
+  keys.SHIFT = sceneRef.input.keyboard.addKey('SHIFT');
+  keys.ESC.once('down', closeShop);
+  keys.SHIFT.once('down', () => {
+    if (state === SHOP) closeShop();
+  });
+}
+
+function getShopItems() {
+  const items = [];
+  
+  // Weapon unlocks
+  const hasMalware = wpns.some(w => w.type === 'malware');
+  const hasDDoS = wpns.some(w => w.type === 'ddos');
+  const hasHook = wpns.some(w => w.type === 'hook');
+  
+  if (!hasMalware) items.push({ type: 'weapon', name: 'Malware Spread', desc: '8-directional attack', weapon: 'malware', cost: 50 });
+  if (!hasDDoS) items.push({ type: 'weapon', name: 'DDoS Attack', desc: 'Area damage aura', weapon: 'ddos', cost: 75 });
+  if (!hasHook) items.push({ type: 'weapon', name: 'Phishing Hook', desc: 'Boomerang projectile', weapon: 'hook', cost: 60 });
+  
+  // Permanent upgrades
+  items.push({ type: 'hp', name: '+20 Max HP', desc: 'Increase max health', cost: 40 });
+  items.push({ type: 'speed', name: '+10% Speed', desc: 'Move faster', cost: 35 });
+  items.push({ type: 'xpgain', name: '+15% XP Gain', desc: 'Earn more XP', cost: 45 });
+  items.push({ type: 'pickup', name: '+5% Pickup Range', desc: 'Larger magnet range', cost: 30 });
+  items.push({ type: 'damage', name: '+10% All Damage', desc: 'Boost all weapons', cost: 50 });
+  items.push({ type: 'heal', name: 'Heal 50%', desc: 'Restore half HP', cost: 25 });
+  
+  // Weapon upgrades (if weapon exists)
+  for (let w of wpns) {
+    items.push({ type: 'weaponup', name: w.type.charAt(0).toUpperCase() + w.type.slice(1) + ' +1', desc: '+20% dmg, +15% rate', weapon: w.type, cost: 40 });
+  }
+  
+  // Shuffle
+  for (let i = items.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [items[i], items[j]] = [items[j], items[i]];
+  }
+  
+  return items.slice(0, 4);
+}
+
+function showLevelUp() {
+  state = LEVELUP;
+  playTone(sceneRef, 440, 0.2);
+  setTimeout(() => playTone(sceneRef, 550, 0.2), 100);
+  setTimeout(() => playTone(sceneRef, 660, 0.2), 200);
+  
+  // Create overlay
+  const overlay = sceneRef.add.graphics();
+  overlay.fillStyle(0x000000, 0.8);
+  overlay.fillRect(0, 0, 800, 600);
+  
+  const title = sceneRef.add.text(400, 100, 'LEVEL UP!', {
+    fontSize: '48px',
+    fontFamily: 'Arial',
+    color: '#00ffff'
+  }).setOrigin(0.5);
+  
+  // Generate 3 random upgrades
+  const options = getUpgradeOptions();
+  upgradeCards = [];
+  
+  for (let i = 0; i < 3; i++) {
+    const opt = options[i];
+    const cardX = 150 + i * 250;
+    const cardY = 300;
+    
+    const card = sceneRef.add.graphics();
+    card.fillStyle(0x1a1a1a, 1);
+    card.lineStyle(2, 0x00ffff, 1);
+    card.fillRect(cardX - 100, cardY - 80, 200, 160);
+    card.strokeRect(cardX - 100, cardY - 80, 200, 160);
+    
+    const name = sceneRef.add.text(cardX, cardY - 40, opt.name, {
+      fontSize: '20px',
+      fontFamily: 'Arial',
+      color: '#00ffff'
+    }).setOrigin(0.5);
+    
+    const desc = sceneRef.add.text(cardX, cardY + 20, opt.desc, {
+      fontSize: '14px',
+      fontFamily: 'Arial',
+      color: '#ffffff'
+    }).setOrigin(0.5);
+    
+    upgradeCards.push({ card, name, desc, opt, x: cardX, y: cardY });
+  }
+  
+  // Click handler
+  sceneRef.input.once('pointerdown', (pointer) => {
+    for (let i = 0; i < upgradeCards.length; i++) {
+      const uc = upgradeCards[i];
+      const dx = pointer.x - uc.x;
+      const dy = pointer.y - uc.y;
+      if (dx >= -100 && dx <= 100 && dy >= -80 && dy <= 80) {
+        applyUpgrade(uc.opt);
+        state = PLAYING;
+        overlay.destroy();
+        title.destroy();
+        for (let uc2 of upgradeCards) {
+          uc2.card.destroy();
+          uc2.name.destroy();
+          uc2.desc.destroy();
+        }
+        upgradeCards = [];
+        break;
+      }
+    }
+  });
+}
+
+function getUpgradeOptions() {
+  const all = [];
+  
+  // Weapon unlocks
+  const hasMalware = wpns.some(w => w.type === 'malware');
+  const hasDDoS = wpns.some(w => w.type === 'ddos');
+  const hasHook = wpns.some(w => w.type === 'hook');
+  
+  if (!hasMalware) all.push({ type: 'weapon', name: 'Malware Spread', desc: '8-directional attack', weapon: 'malware' });
+  if (!hasDDoS) all.push({ type: 'weapon', name: 'DDoS Attack', desc: 'Area damage aura', weapon: 'ddos' });
+  if (!hasHook) all.push({ type: 'weapon', name: 'Phishing Hook', desc: 'Boomerang projectile', weapon: 'hook' });
+  
+  // Weapon level ups
+  for (let w of wpns) {
+    all.push({ type: 'weaponup', name: w.type.charAt(0).toUpperCase() + w.type.slice(1) + ' +1', desc: '+20% dmg, +15% rate', weapon: w.type });
+  }
+  
+  // Character upgrades
+  all.push({ type: 'hp', name: '+20 Max HP', desc: 'Increase max health' });
+  all.push({ type: 'speed', name: '+10% Speed', desc: 'Move faster' });
+  all.push({ type: 'xpgain', name: '+15% XP Gain', desc: 'Earn more XP' });
+  all.push({ type: 'pickup', name: '+5% Pickup Range', desc: 'Larger magnet range' });
+  all.push({ type: 'damage', name: '+10% All Damage', desc: 'Boost all weapons' });
+  all.push({ type: 'heal', name: 'Heal 50%', desc: 'Restore half HP' });
+  
+  // Shuffle and pick 3
+  for (let i = all.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [all[i], all[j]] = [all[j], all[i]];
+  }
+  return all.slice(0, 3);
+}
+
+function applyUpgrade(opt) {
+  if (opt.type === 'weapon') {
+    if (opt.weapon === 'malware') {
+      wpns.push({ type: 'malware', dmg: 5, rate: 1200, lastFire: 0, lvl: 1 });
+    } else if (opt.weapon === 'ddos') {
+      wpns.push({ type: 'ddos', dmg: 3, rate: 0, lastFire: 0, lvl: 1 });
+    } else if (opt.weapon === 'hook') {
+      wpns.push({ type: 'hook', dmg: 12, rate: 1500, lastFire: 0, lvl: 1 });
+    }
+  } else if (opt.type === 'weaponup') {
+    const w = wpns.find(w => w.type === opt.weapon);
+    if (w) {
+      w.lvl++;
+      w.dmg = Math.floor(w.dmg * 1.2);
+      w.rate = Math.floor(w.rate * 0.85);
+    }
+  } else if (opt.type === 'hp') {
+    maxHp += 20;
+    hp += 20;
+  } else if (opt.type === 'speed') {
+    p.spd = Math.floor(p.spd * 1.1);
+  } else if (opt.type === 'xpgain') {
+    xpGain *= 1.15;
+  } else if (opt.type === 'pickup') {
+    pickupRange = Math.floor(pickupRange * 1.05);
+  } else if (opt.type === 'damage') {
+    allDmgMult *= 1.1;
+  } else if (opt.type === 'heal') {
+    hp = Math.min(maxHp, Math.floor(hp + maxHp * 0.5));
+  }
 }
 
 function playTone(scene, frequency, duration) {
   const audioContext = scene.sound.context;
   const oscillator = audioContext.createOscillator();
   const gainNode = audioContext.createGain();
-
+  
   oscillator.connect(gainNode);
   gainNode.connect(audioContext.destination);
-
+  
   oscillator.frequency.value = frequency;
   oscillator.type = 'square';
-
+  
   gainNode.gain.setValueAtTime(0.1, audioContext.currentTime);
   gainNode.gain.exponentialRampToValueAtTime(0.01, audioContext.currentTime + duration);
-
+  
   oscillator.start(audioContext.currentTime);
   oscillator.stop(audioContext.currentTime + duration);
 }
