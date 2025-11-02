@@ -11,6 +11,7 @@ const config = {
     }
   },
   scene: {
+    preload: preload,
     create: create,
     update: update
   }
@@ -19,9 +20,142 @@ const config = {
 const game = new Phaser.Game(config);
 
 // Game state
-let p, enemies, projs, xpCrys, goldDrops, wpns, state, lvl, xp, hp, maxHp, spd, spawnT, lastFire, keys, g, sceneRef;
-let gameTime, startTime, uiTexts, upgradeCards, xpGain, pickupRange, allDmgMult, particles, kills, gold;
+let p, enemies = [], projs = [], xpCrys = [], goldDrops = [], wpns = [], state, lvl, xp, hp, maxHp, spd, spawnT, lastFire, keys, g, sceneRef;
+let gameTime, startTime, uiTexts, upgradeCards, xpGain, pickupRange, allDmgMult, particles = [], kills, gold;
 const MENU = 0, PLAYING = 1, LEVELUP = 2, GAMEOVER = 3, SHOP = 4;
+
+function preload() {
+  // Crear sprites de pixel art programáticamente
+  this.load.image('hacker', createHackerSprite());
+  this.load.image('bug', createBugSprite(0xff0000));
+  this.load.image('virus', createBugSprite(0xff00ff));
+  this.load.image('trojan', createBugSprite(0x0000ff));
+}
+
+function createHackerSprite() {
+  const c = document.createElement('canvas');
+  c.width = 32; 
+  c.height = 32;
+  const ctx = c.getContext('2d');
+  ctx.imageSmoothingEnabled = false;
+  
+  // Paleta de colores basada en tu imagen
+  const hoodie = '#6b8ba8';      // Azul-gris principal
+  const hoodieDark = '#4a6382';  // Sombras del hoodie
+  const hoodieLight = '#8ba3bb'; // Luces del hoodie
+  const face = '#1a1a3d';        // Cara oscura/void
+  const eyes = '#ff3355';        // Ojos rojos brillantes
+  const outline = '#2d3e56';     // Contorno más oscuro
+  
+  // CAPUCHA (hood)
+  // Parte superior redondeada
+  ctx.fillStyle = hoodie;
+  ctx.fillRect(10, 4, 12, 3);    // Top
+  ctx.fillRect(8, 7, 16, 3);     // Medio-alto
+  ctx.fillRect(7, 10, 18, 4);    // Medio
+  
+  // Sombras de la capucha
+  ctx.fillStyle = hoodieDark;
+  ctx.fillRect(8, 4, 2, 3);      // Sombra izq superior
+  ctx.fillRect(22, 4, 2, 3);     // Sombra der superior
+  ctx.fillRect(7, 10, 2, 4);     // Sombra izq lateral
+  ctx.fillRect(23, 10, 2, 4);    // Sombra der lateral
+  
+  // Borde superior de la capucha
+  ctx.fillStyle = outline;
+  ctx.fillRect(10, 3, 12, 1);    // Línea superior
+  
+  // CARA OSCURA (void face)
+  ctx.fillStyle = face;
+  ctx.fillRect(10, 8, 12, 9);    // Área de la cara
+  
+  // OJOS ROJOS BRILLANTES
+  ctx.fillStyle = eyes;
+  ctx.fillRect(12, 10, 3, 3);    // Ojo izquierdo
+  ctx.fillRect(19, 10, 3, 3);    // Ojo derecho
+  
+  // Brillo en los ojos (opcional, más intenso)
+  ctx.fillStyle = '#ff6677';
+  ctx.fillRect(13, 10, 1, 1);    // Brillo ojo izq
+  ctx.fillRect(20, 10, 1, 1);    // Brillo ojo der
+  
+  // SONRISA
+  ctx.fillStyle = eyes;
+  ctx.fillRect(12, 15, 1, 1);    // Inicio sonrisa izq
+  ctx.fillRect(13, 16, 6, 1);    // Línea central sonrisa
+  ctx.fillRect(21, 15, 1, 1);    // Fin sonrisa der
+  
+  // CUERPO DEL HOODIE
+  // Cuello/apertura del hoodie
+  ctx.fillStyle = hoodieLight;
+  ctx.fillRect(9, 14, 14, 3);    // Cuello/apertura
+  
+  // Cuerpo principal
+  ctx.fillStyle = hoodie;
+  ctx.fillRect(7, 17, 18, 10);   // Torso principal
+  ctx.fillRect(6, 20, 20, 5);    // Parte media más ancha
+  
+  // Detalles del cuerpo - línea central del hoodie
+  ctx.fillStyle = hoodieDark;
+  ctx.fillRect(15, 17, 2, 10);   // Línea vertical central
+  
+  // Sombras laterales del cuerpo
+  ctx.fillRect(6, 20, 2, 7);     // Sombra izquierda
+  ctx.fillRect(24, 20, 2, 7);    // Sombra derecha
+  
+  // Parte inferior del hoodie
+  ctx.fillStyle = hoodieDark;
+  ctx.fillRect(7, 27, 18, 2);    // Borde inferior
+  
+  // BOLSILLO FRONTAL (detalle característico)
+  ctx.fillStyle = hoodieDark;
+  ctx.fillRect(10, 22, 12, 1);   // Línea superior del bolsillo
+  ctx.fillRect(10, 22, 1, 3);    // Lateral izq
+  ctx.fillRect(21, 22, 1, 3);    // Lateral der
+  
+  // Detalles de costuras
+  ctx.fillStyle = outline;
+  ctx.fillRect(9, 17, 1, 2);     // Costura hombro izq
+  ctx.fillRect(22, 17, 1, 2);    // Costura hombro der
+  
+  // LUCES/HIGHLIGHTS para dar volumen
+  ctx.fillStyle = hoodieLight;
+  ctx.fillRect(11, 18, 4, 1);    // Luz hombro izq
+  ctx.fillRect(19, 18, 4, 1);    // Luz hombro der
+  ctx.fillRect(13, 23, 6, 1);    // Luz pecho central
+  
+  // CONTORNO GENERAL (outline para mejor definición)
+  ctx.fillStyle = outline;
+  // Bordes laterales
+  ctx.fillRect(6, 19, 1, 1);     // Borde izq superior
+  ctx.fillRect(25, 19, 1, 1);     // Borde der superior
+  ctx.fillRect(5, 21, 1, 5);      // Borde izq medio
+  ctx.fillRect(26, 21, 1, 5);     // Borde der medio
+  
+  return c.toDataURL();
+}
+
+function createBugSprite(color) {
+  const c = document.createElement('canvas');
+  c.width = 16; c.height = 16;
+  const ctx = c.getContext('2d');
+  ctx.imageSmoothingEnabled = false;
+  const hex = '#' + color.toString(16).padStart(6, '0');
+  ctx.fillStyle = hex;
+  // Cuerpo
+  ctx.fillRect(6, 7, 4, 3);
+  // Cabeza
+  ctx.fillRect(7, 5, 2, 3);
+  // Patas
+  ctx.fillRect(4, 9, 2, 1);
+  ctx.fillRect(10, 9, 2, 1);
+  ctx.fillRect(5, 11, 1, 2);
+  ctx.fillRect(10, 11, 1, 2);
+  // Antenas
+  ctx.fillRect(8, 3, 1, 2);
+  ctx.fillRect(7, 2, 3, 1);
+  return c.toDataURL();
+}
 
 function create() {
   sceneRef = this;
@@ -93,13 +227,19 @@ function showTitleScreen(highScore) {
     ease: 'Sine.easeInOut'
   });
   
-  sceneRef.input.keyboard.once('keydown-SPACE', () => {
+  // Configurar evento de teclado para SPACE
+  const spaceKey = sceneRef.input.keyboard.addKey('SPACE');
+  spaceKey.once('down', () => {
     startGame();
   });
 }
 
 function startGame() {
   // Clear title screen graphics and text
+  if (p && p.sprite) p.sprite.destroy();
+  if (enemies && enemies.length > 0) {
+    for (let e of enemies) if (e && e.sprite) e.sprite.destroy();
+  }
   sceneRef.children.removeAll();
   g = sceneRef.add.graphics();
   initGame();
@@ -114,7 +254,8 @@ function initGame() {
     x: 400,
     y: 300,
     spd: 150,
-    rad: 8
+    rad: 8,
+    sprite: sceneRef.add.sprite(400, 300, 'hacker').setScale(2).setOrigin(0.5)
   };
   maxHp = 100;
   hp = maxHp;
@@ -230,6 +371,11 @@ function update(time, delta) {
     // Keep player on screen
     p.x = Math.max(p.rad, Math.min(800 - p.rad, p.x));
     p.y = Math.max(p.rad, Math.min(600 - p.rad, p.y));
+    
+    // Update player sprite position
+    if (p.sprite) {
+      p.sprite.setPosition(p.x, p.y);
+    }
   }
   
   // Enemy spawning (wave system)
@@ -269,6 +415,11 @@ function update(time, delta) {
       
       e.x += dx * e.spd * (delta / 1000);
       e.y += dy * e.spd * (delta / 1000);
+      
+      // Update enemy sprite position
+      if (e.sprite) {
+        e.sprite.setPosition(e.x, e.y);
+      }
     }
     
     // Check enemy collision with player
@@ -279,6 +430,7 @@ function update(time, delta) {
       playTone(sceneRef, 150, 0.2);
       sceneRef.cameras.main.shake(200, 0.01);
       createParticles(e.x, e.y, 0xff0000, 8);
+      if (enemies[i].sprite) enemies[i].sprite.destroy();
       enemies.splice(i, 1);
       if (hp <= 0) {
         endGame();
@@ -339,6 +491,7 @@ function update(time, delta) {
           xpCrys.push({ x: e.x, y: e.y, rad: 5, val: e.xp });
           goldDrops.push({ x: e.x, y: e.y, rad: 4, val: e.gold || Math.floor(e.xp * 2) });
           createParticles(e.x, e.y, e.color, 12);
+          if (enemies[j].sprite) enemies[j].sprite.destroy();
           enemies.splice(j, 1);
           kills++;
         }
@@ -429,6 +582,7 @@ function update(time, delta) {
           xpCrys.push({ x: e.x, y: e.y, rad: 5, val: e.xp });
           goldDrops.push({ x: e.x, y: e.y, rad: 4, val: e.gold || Math.floor(e.xp * 2) });
           createParticles(e.x, e.y, e.color, 12);
+          if (enemies[i].sprite) enemies[i].sprite.destroy();
           enemies.splice(i, 1);
           kills++;
         }
@@ -471,7 +625,7 @@ function spawnEnemy(type) {
   else { x = -20; y = Math.random() * 600; }
   
   if (type === 'bug') {
-    enemies.push({
+    const e = {
       type: 'bug',
       x: x,
       y: y,
@@ -481,10 +635,13 @@ function spawnEnemy(type) {
       rad: 8,
       xp: 1,
       gold: 2,
-      color: 0xff0000
-    });
+      color: 0xff0000,
+      sprite: sceneRef.add.sprite(x, y, 'bug').setScale(2).setOrigin(0.5)
+    };
+    enemies.push(e);
   } else if (type === 'virus') {
-    enemies.push({
+    spriteKey = 'virus';
+    const e = {
       type: 'virus',
       x: x,
       y: y,
@@ -494,10 +651,13 @@ function spawnEnemy(type) {
       rad: 6,
       xp: 2,
       gold: 4,
-      color: 0xff00ff
-    });
+      color: 0xff00ff,
+      sprite: sceneRef.add.sprite(x, y, 'virus').setScale(2).setOrigin(0.5)
+    };
+    enemies.push(e);
   } else if (type === 'trojan') {
-    enemies.push({
+    spriteKey = 'trojan';
+    const e = {
       type: 'trojan',
       x: x,
       y: y,
@@ -507,8 +667,10 @@ function spawnEnemy(type) {
       rad: 12,
       xp: 5,
       gold: 10,
-      color: 0x0000ff
-    });
+      color: 0x0000ff,
+      sprite: sceneRef.add.sprite(x, y, 'trojan').setScale(2.5).setOrigin(0.5)
+    };
+    enemies.push(e);
   }
 }
 
@@ -558,15 +720,7 @@ function drawGame() {
     }
   }
   
-  // Draw player
-  g.fillStyle(0x00ffff, 1);
-  g.fillCircle(p.x, p.y, p.rad);
-  
-  // Draw enemies
-  for (let e of enemies) {
-    g.fillStyle(e.color, 1);
-    g.fillCircle(e.x, e.y, e.rad);
-  }
+  // Player and enemies are now sprites, no need to draw them here
   
   // Draw projectiles
   for (let proj of projs) {
@@ -668,7 +822,9 @@ function endGame() {
     color: '#ffff00'
   }).setOrigin(0.5);
   
-  sceneRef.input.keyboard.once('keydown-SPACE', () => {
+  // Configurar evento de teclado para SPACE para reiniciar
+  const spaceKey = sceneRef.input.keyboard.addKey('SPACE');
+  spaceKey.once('down', () => {
     sceneRef.scene.restart();
   });
 }
